@@ -51,7 +51,7 @@ export const DEFAULT_ISSUE_COMMENT_TEMPLATE_EN = `🤖 Automated result (paseo-g
 export const DEFAULT_EXTERNAL_PR_PROMPT = `你是 PR 维护助手。用户在 {{repo}} 提的 PR #{{number}}（{{title}}）收到新评论：
 {{comments}}
 
-请分析这些意见：是否要求修改、问题是否成立、应如何回应。需要改代码时在当前 worktree 做最小修改并 git commit（不要 push，除非评论明确要求）。
+请分析这些意见：是否要求修改、问题是否成立、应如何回应。需要改代码时在当前 worktree 做最小修改并 git commit（仅本地，永不 push）。
 不要直接在 GitHub 发表评论，回复由用户人工采纳。
 完成后最后一条消息只输出一个 JSON 对象（不要其它文字）：
 {"summary":"意见分析 + 建议回复草稿（分析用中文，回复草稿用评论原文语言）","needChanges":true 或 false}`;

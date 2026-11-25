@@ -21,6 +21,10 @@ export async function readState(): Promise<WorkbenchState> {
   } catch {
     cache = stateSchema.parse({});
   }
+  // 旧版外部跟进提示词允许「评论要求时 push」，与 listing 承诺矛盾：就地收紧
+  if (cache.externalPr.prompt.includes("不要 push，除非评论明确要求")) {
+    cache.externalPr.prompt = cache.externalPr.prompt.replace("（不要 push，除非评论明确要求）", "（仅本地，永不 push）");
+  }
   return cache;
 }
 

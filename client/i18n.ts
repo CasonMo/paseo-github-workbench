@@ -165,7 +165,7 @@ const zh = {
   "auto.agentAdvanced": "高级配置（JSON，可选）",
   "auto.agentAdvancedHint": "JSON 对象，合并进 agent 配置，可设 options / systemPrompt / toolPolicy / mcpServers",
   "external.title": "我提的 PR（外部仓库）跟进",
-  "external.intro": "你在别人仓库提的 PR 收到新评论时，自动派发 agent 分析意见并起草回复（不自动发评论、不 push），后续评论复用原 agent。",
+  "external.intro": "你在别人仓库提的 PR 收到新评论时，自动派发 agent 分析意见并起草回复（不自动发评论；改动仅本地 commit，永不 push），后续评论复用原 agent。",
   "external.promptLabel": "分析提示词模板",
 } as const;
 
@@ -298,7 +298,7 @@ const en: Record<DictKey, string> = {
   "auto.agentAdvanced": "Advanced config (JSON, optional)",
   "auto.agentAdvancedHint": "JSON object merged into the agent config; supports options / systemPrompt / toolPolicy / mcpServers",
   "external.title": "Follow up my PRs in external repos",
-  "external.intro": "When PRs you filed in other people's repos receive new comments, an agent analyzes the feedback and drafts a reply (no auto-commenting, no push); later comments reuse the original agent.",
+  "external.intro": "When PRs you filed in other people's repos receive new comments, an agent analyzes the feedback and drafts a reply (no auto-commenting; changes are local commits only, never pushed); later comments reuse the original agent.",
   "external.promptLabel": "Analysis prompt template",
 };
 

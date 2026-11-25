@@ -8,7 +8,7 @@
 - **侧边栏未处理徽章**：菜单右侧显示待处理计数——名下仓库尚未派发的 open PR/issue + 待确认合并 + 失败待重试的 run；失败 run 可「忽略」移出计数。每 30 秒轮询，为 0 时隐藏。
 - **回写语言自适应**：评论模板仍为内置默认时，按条目语言在中/英模板间切换，并指示 agent 用条目语言输出摘要；自定义模板原样使用。
 - **worktree 卫生**：合并后、失败 run 被忽略后、轮询发现 PR/issue 已关闭/合并后，自动归档 worktree（待确认 run 自动收尾）。
-- **外部 PR 跟进（可选）**：你在别人仓库提的 PR 收到新评论时，派发 agent 分析意见并起草回复（存运行记录，不自动发评论、不 push），后续评论复用原 agent。自动化页可配置提示词与 agent。
+- **外部 PR 跟进（可选）**：你在别人仓库提的 PR 收到新评论时，派发 agent 分析意见并起草回复（存运行记录，不自动发评论）；agent 可在 worktree 做最小本地 commit，但永不 push。后续评论复用原 agent。自动化页可配置提示词与 agent。
 - **详情面板**：点击卡片查看描述、评论 Activity、PR checks 与评审状态；内联操作派发、发表评论、合并 / 自动合并（等 checks）、Fix broken checks。
 - **一键派发，零配置**：自动匹配本地 Paseo project，没有就 `gh repo clone` 到插件管理目录；PR 用 worktree checkout，issue 用 branch-off worktree；默认模型用 Paseo provider 目录的默认项，无需选择。
 - **派发 agent 可自定义**：每个仓库的 PR 评审 / Issue 处理可分别配置派发的 agent 与模型（provider/model）、思考档位、权限模式；留空即用 Paseo 默认。另有高级配置（JSON 对象）合并进 agent 配置，可设 `options` / `systemPrompt` / `toolPolicy` / `mcpServers`。手动派发与失败重试同样生效。
