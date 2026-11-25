@@ -117,27 +117,32 @@ export function Board({ ui, runs, repoConfigs, navigation, prefs }: { ui: Ui; ru
           const pending = pendingKey === key;
           return (
             <Card key={key} ui={ui} padded={false}>
-              <Pressable accessibilityRole="button" onPress={() => setSelected({ repo: item.repo, kind: item.kind, number: item.number })} style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [{ padding: ui.compact ? 12 : 14, gap: 8 }, hovered && { backgroundColor: ui.c.fillHover }, pressed && ui.s.pressed]}>
-                <View style={[ui.s.row, ui.s.gap8, { flexWrap: "wrap" }]}>
-                  <Icon name={item.kind === "pr" ? "GitPullRequest" : "CircleDot"} size={15} color={item.state === "open" ? ui.c.success : ui.c.muted} />
-                  <Text style={[ui.s.h3, { flexShrink: 1 }]} numberOfLines={1}>{item.title}</Text>
-                  <View style={ui.s.grow} />
-                  {item.state !== "open" ? <Tag ui={ui} label={item.state} tone={item.state === "merged" ? "success" : "muted"} /> : null}
-                  {item.isDraft ? <Tag ui={ui} label="draft" tone="muted" /> : null}
-                  {latestRun ? <Tag ui={ui} label={t(RUN_STATUS_KEY[latestRun.status])} tone={RUN_STATUS_TONE[latestRun.status]} /> : null}
+              <View style={[ui.s.row, { alignItems: "flex-start", gap: 10, padding: ui.compact ? 12 : 14 }]}>
+                <Pressable accessibilityRole="button" onPress={() => setSelected({ repo: item.repo, kind: item.kind, number: item.number })} style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [{ flex: 1, gap: 8 }, hovered && { backgroundColor: ui.c.fillHover }, pressed && ui.s.pressed]}>
+                  <View style={[ui.s.row, ui.s.gap8, { flexWrap: "wrap" }]}>
+                    <Icon name={item.kind === "pr" ? "GitPullRequest" : "CircleDot"} size={15} color={item.state === "open" ? ui.c.success : ui.c.muted} />
+                    <Text style={[ui.s.h3, { flexShrink: 1 }]} numberOfLines={1}>{item.title}</Text>
+                  </View>
+                  <View style={[ui.s.row, ui.s.gap8, { flexWrap: "wrap" }]}>
+                    <Avatar ui={ui} name={item.author} size={18} />
+                    <Text style={ui.s.tiny}>{item.repo}#{item.number}</Text>
+                    <Text style={ui.s.tiny}>{item.author}</Text>
+                    <Text style={ui.s.tiny}>{relTime(item.updatedAt)}</Text>
+                    {item.labels.slice(0, 3).map((l) => <Tag key={l} ui={ui} label={l} tone="muted" />)}
+                  </View>
+                </Pressable>
+                <View style={{ alignItems: "flex-end", gap: 6 }}>
+                  <View style={[ui.s.row, ui.s.gap6, { flexWrap: "wrap", justifyContent: "flex-end" }]}>
+                    {item.state !== "open" ? <Tag ui={ui} label={item.state} tone={item.state === "merged" ? "success" : "muted"} /> : null}
+                    {item.isDraft ? <Tag ui={ui} label="draft" tone="muted" /> : null}
+                    {latestRun ? <Tag ui={ui} label={t(RUN_STATUS_KEY[latestRun.status])} tone={RUN_STATUS_TONE[latestRun.status]} /> : null}
+                  </View>
+                  <View style={[ui.s.row, ui.s.gap6]}>
+                    <Btn ui={ui} label={latestRun?.status === "running" ? t("common.redispatch") : t("common.dispatch")} icon="Bot" tone="primary" busy={pending} onPress={() => setDispatchFor(dispatchFor === key ? null : key)} style={{ paddingHorizontal: 10, paddingVertical: 5 }} />
+                    {latestRun?.agentId && navigation?.openAgent ? <IconBtn ui={ui} icon="Bot" label={t("common.openAgent")} onPress={() => navigation.openAgent({ agentId: latestRun.agentId })} /> : null}
+                    <IconBtn ui={ui} icon="ExternalLink" label={t("common.openGitHub")} onPress={() => void openExternalUrl(item.url)} />
+                  </View>
                 </View>
-                <View style={[ui.s.row, ui.s.gap8, { flexWrap: "wrap" }]}>
-                  <Avatar ui={ui} name={item.author} size={18} />
-                  <Text style={ui.s.tiny}>{item.repo}#{item.number}</Text>
-                  <Text style={ui.s.tiny}>{item.author}</Text>
-                  <Text style={ui.s.tiny}>{relTime(item.updatedAt)}</Text>
-                  {item.labels.slice(0, 3).map((l) => <Tag key={l} ui={ui} label={l} tone="muted" />)}
-                </View>
-              </Pressable>
-              <View style={[ui.s.row, ui.s.gap6, { paddingHorizontal: ui.compact ? 12 : 14, paddingBottom: 12, flexWrap: "wrap" }]}>
-                <Btn ui={ui} label={latestRun?.status === "running" ? t("common.redispatch") : t("common.dispatch")} icon="Bot" tone="primary" busy={pending} onPress={() => setDispatchFor(dispatchFor === key ? null : key)} />
-                {latestRun?.agentId && navigation?.openAgent ? <Btn ui={ui} label={t("common.openAgent")} icon="Bot" onPress={() => navigation.openAgent({ agentId: latestRun.agentId })} /> : null}
-                <IconBtn ui={ui} icon="ExternalLink" label={t("common.openGitHub")} onPress={() => void openExternalUrl(item.url)} />
               </View>
               {dispatchFor === key ? (
                 <View style={{ paddingHorizontal: ui.compact ? 12 : 14, paddingBottom: 12 }}>
