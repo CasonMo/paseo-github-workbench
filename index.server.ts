@@ -1,6 +1,6 @@
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
-import { ALL_REPOS, boardList, dispatchItem, ghCollaboratorsList, ghLabelsList, ghReposList, itemComment, itemDetail, itemMerge, pollNow, providerCatalog, repoRemove, repoSave, repoSchema, runAction, stateGet, uiPrefsSave } from "./shared/contracts";
-import { authStatus, fetchDetail, listCollaborators, listLabels, listRepos, mergePullRequest, postComment, searchBoard } from "./server/github";
+import { ALL_REPOS, attentionBadge, boardList, dispatchItem, ghCollaboratorsList, ghLabelsList, ghReposList, itemComment, itemDetail, itemMerge, pollNow, providerCatalog, repoRemove, repoSave, repoSchema, runAction, stateGet, uiPrefsSave } from "./shared/contracts";
+import { authStatus, fetchDetail, listCollaborators, listLabels, listRepos, mergePullRequest, postComment, searchBoardCached } from "./server/github";
 import { dispatchItem as dispatch, doRunAction, onTurnEnd, tick } from "./server/engine";
 import { readState, updateState } from "./server/store";
 
@@ -74,9 +74,28 @@ export default function contribute(server: PluginServerContext) {
     const auth = await authStatus();
     if (!auth.ok) throw new Error(auth.message);
     const kinds = kind === "all" ? (["pr", "issue"] as const) : ([kind] as const);
-    const items = (await Promise.all(kinds.map((k) => searchBoard(auth.user, k, state)))).flat();
+    const items = (await Promise.all(kinds.map((k) => searchBoardCached(auth.user, k, state)))).flat();
     items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return { items, user: auth.user };
+  });
+
+  server.handle(attentionBadge, async (_input, { paseo }) => {
+    capture(paseo);
+    try {
+      const auth = await authStatus();
+      if (!auth.ok) return { count: 0 };
+      const state = await readState();
+      const [prs, issues] = await Promise.all([
+        searchBoardCached(auth.user, "pr", "open"),
+        searchBoardCached(auth.user, "issue", "open"),
+      ]);
+      const hasRun = new Set(state.runs.map((r) => `${r.repo}#${r.number}:${r.kind}`));
+      const undispatched = [...prs, ...issues].filter((i) => !hasRun.has(`${i.repo}#${i.number}:${i.kind}`)).length;
+      const pendingRuns = state.runs.filter((r) => r.status === "awaiting_merge" || r.status === "failed").length;
+      return { count: undispatched + pendingRuns };
+    } catch {
+      return { count: 0 };
+    }
   });
 
   server.handle(dispatchItem, async ({ repo, kind, number, prompt, agent }, { paseo }) => {

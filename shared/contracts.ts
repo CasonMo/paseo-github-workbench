@@ -307,6 +307,12 @@ export const itemMerge = defineRpc({
   output: z.object({ message: z.string() }),
 });
 
+export const attentionBadge = defineRpc({
+  name: "github-workbench.attention.badge",
+  input: z.object({}),
+  output: z.object({ count: z.number() }),
+});
+
 export const uiPrefsSave = defineRpc({
   name: "github-workbench.ui.save",
   input: uiPrefsSchema.partial(),

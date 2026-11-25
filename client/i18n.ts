@@ -76,6 +76,7 @@ const zh = {
   "time.daysAgo": "{n} 天前",
 
   "app.title": "GitHub 工作台",
+  "sidebar.badgeLabel": "GitHub 工作台，{n} 条未处理",
   "app.ghUnauth": "gh 未认证",
   "app.pollNow": "立即检查",
   "app.stateError": "状态读取失败",
@@ -200,6 +201,7 @@ const en: Record<DictKey, string> = {
   "time.daysAgo": "{n}d ago",
 
   "app.title": "GitHub Workbench",
+  "sidebar.badgeLabel": "GitHub Workbench, {n} pending",
   "app.ghUnauth": "gh not authenticated",
   "app.pollNow": "Check now",
   "app.stateError": "Failed to load state",

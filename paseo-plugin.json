@@ -1,11 +1,11 @@
 {
   "id": "paseo-github-workbench",
   "name": "GitHub Workbench",
-  "description": "Automate GitHub PR review and issue handling in Paseo: poll repos, dispatch agents into worktrees with an editable pre-dispatch panel (prompt, agent/model, thinking effort, permission mode), follow up new comments in the original agent, then merge or comment back.",
+  "description": "Automate GitHub PR review and issue handling in Paseo: a board covering your repos and PRs/issues you authored elsewhere, a sidebar pending badge, an editable pre-dispatch panel (prompt, agent/model, thinking effort, permission mode), follow-up comments in the original agent, then merge or comment back.",
   "translations": {
     "zh-CN": {
       "name": "GitHub 工作台",
-      "description": "在 Paseo 中自动化 GitHub PR 评审与 Issue 处理：轮询仓库、派发前可在面板编辑提示词与 agent 配置（agent/模型、思考档位、权限模式），新评论复用原 agent 跟进，再合并或评论回写。"
+      "description": "在 Paseo 中自动化 GitHub PR 评审与 Issue 处理：看板覆盖名下仓库与你在别人仓库提的 PR/issue，侧边栏未处理徽章，派发前可在面板编辑提示词与 agent 配置（agent/模型、思考档位、权限模式），新评论复用原 agent 跟进，再合并或评论回写。"
     }
   },
   "requirements": {

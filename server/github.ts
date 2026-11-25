@@ -162,19 +162,29 @@ interface SearchRow {
   labels?: { name: string }[];
 }
 
-/** 跨仓库看板：gh search 一次拉用户名下所有 PR / issue（state: open/closed/all）。 */
+/** 跨仓库看板：名下仓库 + 本人作为作者的 PR / issue（含外部仓库），两路搜索去重合并。 */
 export async function searchBoard(user: string, kind: "pr" | "issue", state: "open" | "closed" | "all" = "open"): Promise<BoardItem[]> {
   // isDraft 仅 PR 搜索支持；issue 搜索带上会报 Unknown JSON field
   const fields = kind === "pr"
     ? "number,title,url,author,updatedAt,state,repository,isDraft,labels"
     : "number,title,url,author,updatedAt,state,repository,labels";
-  const rows = await ghJson<SearchRow[]>([
+  const base = [
     "search", kind === "pr" ? "prs" : "issues",
-    "--owner", user,
-    ...(state === "all" ? [] : ["--state", state]),
     "--limit", "100",
     "--json", fields,
+    ...(state === "all" ? [] : ["--state", state]),
+  ];
+  const [owned, authored] = await Promise.all([
+    ghJson<SearchRow[]>([...base, "--owner", user]),
+    ghJson<SearchRow[]>([...base, "--author", user]),
   ]);
+  const seen = new Set<string>();
+  const rows = [...owned, ...authored].filter((r) => {
+    const key = `${r.repository.nameWithOwner}#${r.number}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   return rows.map((r) => ({
     repo: r.repository.nameWithOwner,
     kind,
@@ -187,6 +197,19 @@ export async function searchBoard(user: string, kind: "pr" | "issue", state: "op
     isDraft: r.isDraft === true,
     labels: (r.labels ?? []).map((l) => l.name),
   }));
+}
+
+const boardCache = new Map<string, { at: number; items: BoardItem[] }>();
+const BOARD_CACHE_TTL_MS = 60_000;
+
+/** 看板与侧边栏徽章共用的搜索缓存，避免 gh 调用翻倍。 */
+export async function searchBoardCached(user: string, kind: "pr" | "issue", state: "open" | "closed" | "all" = "open"): Promise<BoardItem[]> {
+  const key = `${kind}:${state}`;
+  const hit = boardCache.get(key);
+  if (hit && Date.now() - hit.at < BOARD_CACHE_TTL_MS) return hit.items;
+  const items = await searchBoard(user, kind, state);
+  boardCache.set(key, { at: Date.now(), items });
+  return items;
 }
 
 export function cloneRepo(repo: string, dest: string): Promise<string> {
