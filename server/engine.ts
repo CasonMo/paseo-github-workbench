@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { ALL_REPOS, DEFAULT_ISSUE_COMMENT_TEMPLATE, DEFAULT_ISSUE_PROMPT, DEFAULT_PR_COMMENT_TEMPLATE, DEFAULT_PR_REVIEW_PROMPT, agentSettingsSchema, type AgentSettings, type RepoConfig, type RunRecord, type WorkbenchState } from "../shared/contracts";
 import type { GhItem } from "./github";
-import { cloneRepo, fetchComments, fetchHead, fetchItem, fetchOrigin, listIssues, listPullRequests, listRepos, mergePullRequest, postComment } from "./github";
+import { cloneRepo, fetchComments, fetchHead, fetchItem, fetchOrigin, listIssues, listPullRequests, listRepos, mergePullRequest, postComment, worktreeHead } from "./github";
 import { readState, updateState } from "./store";
 
 type PaseoApi = PluginHandlerContext["paseo"];
@@ -169,6 +169,23 @@ export async function startRun(paseo: PaseoApi, repo: string, kind: "pr" | "issu
               worktreeSlug: `issue-${item.number}`,
             },
     });
+    // checkout 按 PR 号进行，可能晚于 SHA 记录：派发前校验 worktree 实际 HEAD，
+    // 不一致则以实际 checkout 的 commit 重启评审记录，保证 reviewed SHA 真实
+    if (kind === "pr" && run.headSha) {
+      const actual = workspace.directory ? await worktreeHead(workspace.directory) : "";
+      if (!actual) {
+        await patchRun(run.id, { status: "failed", error: "无法校验 worktree HEAD，已取消派发" });
+        return run;
+      }
+      if (actual !== run.headSha) {
+        run.headSha = actual;
+        await updateState((s) => {
+          const r = s.runs.find((x) => x.id === run.id);
+          if (r) r.headSha = actual;
+          s.seen[`${repo}#${item.number}`] = actual;
+        });
+      }
+    }
     const agent = await workspace.agents.create({
       config: agentConfig,
       title: `${kind === "pr" ? "评审" : "处理"} ${repo}#${item.number}`,

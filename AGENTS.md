@@ -50,7 +50,9 @@ Paseo plugin requirements we must follow when developing and reviewing this plug
 - Merges are pinned to the reviewed head commit (REST `sha` parameter); a moved PR head
   blocks the merge and triggers a fresh review dispatch. Automatic merge never enables
   GitHub-native auto-merge; pending checks leave the run for manual confirmation, and runs
-  without a reviewed SHA are re-reviewed instead of merged.
+  without a reviewed SHA are re-reviewed instead of merged. Before dispatch the worktree's
+  actual HEAD is verified against the recorded SHA; a mismatch restarts the review on the
+  checked-out commit, and an unverifiable worktree cancels the dispatch.
 - Document every network destination and data flow in `OVERVIEW.md`.
 
 ## Data sanitization

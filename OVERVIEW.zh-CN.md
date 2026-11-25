@@ -9,7 +9,7 @@
 - **详情面板**：点击卡片查看描述、评论 Activity、PR checks 与评审状态；内联操作派发、发表评论、合并 / 自动合并（等 checks）、Fix broken checks。
 - **一键派发，零配置**：自动匹配本地 Paseo project，没有就 `gh repo clone` 到插件管理目录；PR 用 worktree checkout，issue 用 branch-off worktree；默认模型用 Paseo provider 目录的默认项，无需选择。
 - **派发 agent 可自定义**：每个仓库的 PR 评审 / Issue 处理可分别配置派发的 agent 与模型（provider/model）、思考档位、权限模式；留空即用 Paseo 默认。另有高级配置（JSON 对象）合并进 agent 配置，可设 `options` / `systemPrompt` / `toolPolicy` / `mcpServers`。手动派发与失败重试同样生效。
-- **结果回写**：PR 评审输出结构化结论，通过则合并（默认需人工确认，可开全自动），有问题按模板评论回 PR；issue 处理结果按模板评论回 issue。合并锁定 agent 评审时的 commit：REST 合并调用携带评审时的 head SHA，PR head 变化时阻止合并并自动重新派发评审。自动合并不启用 GitHub 原生 auto-merge；checks 未过时 run 挂起留人工批准。缺少评审 SHA 的旧 run 一律重新评审，不允许合并。
+- **结果回写**：PR 评审输出结构化结论，通过则合并（默认需人工确认，可开全自动），有问题按模板评论回 PR；issue 处理结果按模板评论回 issue。合并锁定 agent 评审时的 commit：REST 合并调用携带评审时的 head SHA，PR head 变化时阻止合并并自动重新派发评审。自动合并不启用 GitHub 原生 auto-merge；checks 未过时 run 挂起留人工批准。缺少评审 SHA 的旧 run 一律重新评审，不允许合并。派发前校验 worktree 实际 HEAD 与记录 SHA：记录与 checkout 之间 PR 有变化时以实际 checkout 的 commit 重启评审，无法校验则取消派发。
 - **新评论复用原 agent 跟进**：已派发过 agent 的 PR / issue 有新评论时，插件把新评论按跟进模板追加给原 agent 继续会话（保留 worktree 与上下文），不新开 agent；原 agent 已归档或不可用时自动回退新派发。插件自身的回写评论不触发跟进；agent 正在运行时评论会攒到下一轮批量处理。跟进提示词可按仓库编辑。
 - **运行记录**：状态筛选、结论查看、批准合并 / 跳过 / 失败重试、跳转 agent。
 - **自动化（可选）**：按仓库轮询，新 PR / 新 issue（可按 label、author 白名单过滤）自动派发；提示词与评论模板可编辑；首次轮询只建基线，不会派发存量条目。

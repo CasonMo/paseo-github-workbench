@@ -59,6 +59,16 @@ export function fetchHead(repo: string, number: number): Promise<string> {
   return ghJson<{ headRefOid: string }>(["pr", "view", String(number), "--repo", repo, "--json", "headRefOid"]).then((r) => r.headRefOid);
 }
 
+/** worktree 实际 HEAD；读不到返回空串。 */
+export async function worktreeHead(dir: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", dir, "rev-parse", "HEAD"], { maxBuffer: 1024 * 1024 });
+    return stdout.trim();
+  } catch {
+    return "";
+  }
+}
+
 /** 合并锁定评审时的 head commit：REST merge 带 sha 参数，head 变化时 GitHub 直接拒绝。 */
 export async function mergePullRequest(repo: string, number: number, method: "merge" | "squash" | "rebase", auto = false, expectedSha = ""): Promise<string> {
   if (auto) {
