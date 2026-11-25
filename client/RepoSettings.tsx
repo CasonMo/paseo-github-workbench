@@ -5,6 +5,8 @@ import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import {
   ALL_REPOS,
+  externalPrSave,
+  externalPrSchema,
   ghCollaboratorsList,
   ghLabelsList,
   ghReposList,
@@ -170,6 +172,36 @@ function RepoEditor({ ui, repo }: { ui: Ui; repo: RepoConfig }) {
   );
 }
 
+function ExternalPrCard({ ui, value }: { ui: Ui; value?: WorkbenchState["externalPr"] }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState(value ?? externalPrSchema.parse({}));
+  const save = useRpc(externalPrSave);
+  const mutation = useMutation({
+    mutationFn: () => save(draft),
+    onSuccess: () => { toast.show(t("common.saved")); void queryClient.invalidateQueries({ queryKey: STATE_KEY }); },
+    onError: (e) => toast.show(e instanceof Error ? e.message : String(e)),
+  });
+  return (
+    <Card ui={ui}>
+      <View style={ui.s.gap12}>
+        <Toggle ui={ui} label={t("external.title")} value={draft.enabled} onChange={(v) => setDraft((d) => ({ ...d, enabled: v }))} />
+        <Text style={ui.s.muted}>{t("external.intro")}</Text>
+        {draft.enabled ? (
+          <View style={ui.s.gap12}>
+            <Field ui={ui} label={t("external.promptLabel")} hint={t("auto.promptHint")} value={draft.prompt} onChangeText={(v) => setDraft((d) => ({ ...d, prompt: v }))} multiline />
+            <AgentFields ui={ui} value={draft.agent} onChange={(agent) => setDraft((d) => ({ ...d, agent }))} />
+          </View>
+        ) : null}
+        <View style={[ui.s.row, { justifyContent: "flex-end" }]}>
+          <Btn ui={ui} label={t("common.save")} icon="Check" tone="primary" busy={mutation.isPending} onPress={() => mutation.mutate()} />
+        </View>
+      </View>
+    </Card>
+  );
+}
+
 export function RepoSettings({ ui, state }: { ui: Ui; state: WorkbenchState | undefined }) {
   const { t } = useI18n();
   const toast = useToast();
@@ -185,6 +217,7 @@ export function RepoSettings({ ui, state }: { ui: Ui; state: WorkbenchState | un
   return (
     <View style={ui.s.gap12}>
       <Text style={ui.s.muted}>{t("auto.intro")}</Text>
+      <ExternalPrCard ui={ui} value={state?.externalPr} />
       <Card ui={ui}>
         <View style={ui.s.gap8}>
           <Text style={ui.s.h2}>{t("auto.addTitle")}</Text>

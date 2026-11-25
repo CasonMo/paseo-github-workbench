@@ -3,9 +3,9 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
-import { ALL_REPOS, DEFAULT_ISSUE_COMMENT_TEMPLATE, DEFAULT_ISSUE_PROMPT, DEFAULT_PR_COMMENT_TEMPLATE, DEFAULT_PR_REVIEW_PROMPT, agentSettingsSchema, type AgentSettings, type RepoConfig, type RunRecord, type WorkbenchState } from "../shared/contracts";
+import { ALL_REPOS, DEFAULT_ISSUE_COMMENT_TEMPLATE, DEFAULT_ISSUE_COMMENT_TEMPLATE_EN, DEFAULT_ISSUE_PROMPT, DEFAULT_PR_COMMENT_TEMPLATE, DEFAULT_PR_COMMENT_TEMPLATE_EN, DEFAULT_PR_REVIEW_PROMPT, agentSettingsSchema, type AgentSettings, type RepoConfig, type RunRecord, type WorkbenchState } from "../shared/contracts";
 import type { GhItem } from "./github";
-import { cloneRepo, fetchComments, fetchHead, fetchItem, fetchOrigin, listIssues, listPullRequests, listRepos, mergePullRequest, postComment, worktreeHead } from "./github";
+import { authStatus, cloneRepo, fetchComments, fetchHead, fetchItem, fetchOrigin, listIssues, listPullRequests, listRepos, mergePullRequest, postComment, searchBoardCached, worktreeHead } from "./github";
 import { readState, updateState } from "./store";
 
 type PaseoApi = PluginHandlerContext["paseo"];
@@ -32,6 +32,42 @@ function itemVars(repo: string, item: GhItem): Record<string, string> {
 function authorAllowed(allowlist: string, author: string): boolean {
   const list = allowlist.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   return list.length === 0 || list.includes(author.toLowerCase());
+}
+
+/** 条目主语言：含 CJK 且占比不低于 30% 判中文（容忍英文技术词），否则英文。 */
+export function detectLang(text: string): "zh" | "en" {
+  const cjk = (text.match(/[一-鿿]/g) ?? []).length;
+  const latin = (text.match(/[a-zA-Z]/g) ?? []).length;
+  return cjk > 0 && cjk / Math.max(latin, 1) >= 0.3 ? "zh" : "en";
+}
+
+function langHint(item: GhItem): string {
+  return detectLang(`${item.title}\n${item.body}`) === "en"
+    ? "\n\nWrite the summary and any reply draft in English (match the item's language)."
+    : "\n\nsummary 与回复草稿使用中文（与条目语言一致）。";
+}
+
+/** 回写模板：仅当配置仍是中文默认模板时按条目语言选 zh/en，自定义模板原样尊重。 */
+async function commentTemplateFor(run: RunRecord, repoConfig: RepoConfig | undefined): Promise<string> {
+  const configured = run.kind === "pr"
+    ? (repoConfig?.prReview.commentTemplate ?? DEFAULT_PR_COMMENT_TEMPLATE)
+    : (repoConfig?.issueHandle.commentTemplate ?? DEFAULT_ISSUE_COMMENT_TEMPLATE);
+  const zhDefault = run.kind === "pr" ? DEFAULT_PR_COMMENT_TEMPLATE : DEFAULT_ISSUE_COMMENT_TEMPLATE;
+  if (configured !== zhDefault) return configured;
+  const item = await fetchItem(run.repo, run.kind, run.number).catch(() => null);
+  if (item && detectLang(`${item.title}\n${item.body}`) === "en") {
+    return run.kind === "pr" ? DEFAULT_PR_COMMENT_TEMPLATE_EN : DEFAULT_ISSUE_COMMENT_TEMPLATE_EN;
+  }
+  return configured;
+}
+
+async function archiveWorkspace(paseo: PaseoApi, workspaceId: string): Promise<void> {
+  if (!workspaceId) return;
+  try {
+    await paseo.workspaces.archive(workspaceId);
+  } catch {
+    // 已归档或不存在：忽略
+  }
 }
 
 /** 从 agent 最后一条消息里提取 JSON 结论（容忍 ```json 围栏和前后杂文字）。 */
@@ -129,6 +165,8 @@ function newRun(repo: string, kind: "pr" | "issue", item: GhItem): RunRecord {
     agentId: "",
     commentPosted: false,
     merged: false,
+    dismissed: false,
+    external: false,
     createdAt: now,
     updatedAt: now,
   };
@@ -142,7 +180,7 @@ async function patchRun(runId: string, patch: Partial<RunRecord>): Promise<void>
 }
 
 /** 派发一个 run：解析本地仓库 → 开 worktree（PR checkout / issue branch-off）→ 按配置创建 agent。 */
-export async function startRun(paseo: PaseoApi, repo: string, kind: "pr" | "issue", item: GhItem, promptTemplate: string, agentSettings: AgentSettings): Promise<RunRecord> {
+export async function startRun(paseo: PaseoApi, repo: string, kind: "pr" | "issue", item: GhItem, promptTemplate: string, agentSettings: AgentSettings, extraVars?: Record<string, string>): Promise<RunRecord> {
   const run = newRun(repo, kind, item);
   await updateState((state) => {
     state.runs.push(run);
@@ -189,7 +227,7 @@ export async function startRun(paseo: PaseoApi, repo: string, kind: "pr" | "issu
     const agent = await workspace.agents.create({
       config: agentConfig,
       title: `${kind === "pr" ? "评审" : "处理"} ${repo}#${item.number}`,
-      prompt: render(promptTemplate, itemVars(repo, item)),
+      prompt: render(promptTemplate, { ...itemVars(repo, item), ...extraVars }) + langHint(item),
       metadata: { [METADATA_KEY]: { runId: run.id } },
     });
     await patchRun(run.id, { workspaceId: workspace.id, agentId: agent.id });
@@ -201,19 +239,41 @@ export async function startRun(paseo: PaseoApi, repo: string, kind: "pr" | "issu
 
 /** 条目有新评论 → 追加给原 agent 继续会话；没有可复用的 agent 时回退新派发。 */
 export async function followUpOnComments(paseo: PaseoApi, repoConfig: RepoConfig, kind: "pr" | "issue", item: GhItem, state: WorkbenchState): Promise<number> {
-  const cursorKey = `${repoConfig.repo}#${item.number}:comments`;
-  const history = state.runs.filter((r) => r.repo === repoConfig.repo && r.kind === kind && r.number === item.number && r.agentId).reverse();
-  if (history.length === 0) return 0;
-  const comments = await fetchComments(repoConfig.repo, kind, item.number);
+  const pipeline = kind === "pr" ? repoConfig.prReview : repoConfig.issueHandle;
+  return followUp(paseo, repoConfig.repo, kind, item, state, {
+    authors: pipeline.authors,
+    agent: pipeline.agent,
+    followUpPrompt: pipeline.followUpPrompt,
+    firstPrompt: pipeline.prompt,
+  });
+}
+
+interface FollowUpOpts {
+  authors: string;
+  agent: AgentSettings;
+  followUpPrompt: string;
+  firstPrompt: string;
+  external?: boolean;
+  excludeAuthor?: string;
+}
+
+async function followUp(paseo: PaseoApi, repo: string, kind: "pr" | "issue", item: GhItem, state: WorkbenchState, opts: FollowUpOpts): Promise<number> {
+  const cursorKey = `${repo}#${item.number}:comments`;
+  const history = state.runs.filter((r) => r.repo === repo && r.kind === kind && r.number === item.number && r.agentId).reverse();
+  if (history.length === 0 && !opts.external) return 0;
+  const comments = await fetchComments(repo, kind, item.number);
   const cursor = state.seen[cursorKey];
   if (cursor === undefined) {
-    // 升级前已派发的条目：只建基线，不回放历史评论
+    // 升级前已派发的条目 / 首次启用：只建基线，不回放历史评论
     const latest = comments.reduce((max, c) => (c.createdAt > max ? c.createdAt : max), "");
     await updateState((s) => { s.seen[cursorKey] = latest || new Date().toISOString(); });
     return 0;
   }
-  const pipeline = kind === "pr" ? repoConfig.prReview : repoConfig.issueHandle;
-  const fresh = comments.filter((c) => c.createdAt > cursor && !c.body.includes("paseo-github-workbench") && authorAllowed(pipeline.authors, c.author));
+  const fresh = comments.filter((c) =>
+    c.createdAt > cursor
+    && !c.body.includes("paseo-github-workbench")
+    && (!opts.excludeAuthor || c.author.toLowerCase() !== opts.excludeAuthor.toLowerCase())
+    && authorAllowed(opts.authors, c.author));
   if (fresh.length === 0) return 0;
 
   let handle: ReturnType<PaseoApi["agents"]["ref"]> | null = null;
@@ -233,21 +293,22 @@ export async function followUpOnComments(paseo: PaseoApi, repoConfig: RepoConfig
     break;
   }
   if (!handle || !source) {
-    const prompt = kind === "pr" ? repoConfig.prReview.prompt : repoConfig.issueHandle.prompt;
-    await startRun(paseo, repoConfig.repo, kind, item, prompt, pipeline.agent);
+    const run = await startRun(paseo, repo, kind, item, opts.firstPrompt, opts.agent, { comments: fresh.map((c) => `${c.author}: ${c.body}`).join("\n\n") });
+    if (opts.external && run.status !== "failed") await patchRun(run.id, { external: true });
     return 1;
   }
-  const run = newRun(repoConfig.repo, kind, item);
+  const run = newRun(repo, kind, item);
   run.workspaceId = source.workspaceId;
   run.agentId = source.agentId;
+  run.external = opts.external === true;
   const nextCursor = fresh.reduce((max, c) => (c.createdAt > max ? c.createdAt : max), cursor);
   await updateState((s) => {
     s.runs.push(run);
     s.seen[cursorKey] = nextCursor;
   });
   try {
-    const vars = { ...itemVars(repoConfig.repo, item), comments: fresh.map((c) => `${c.author}: ${c.body}`).join("\n\n") };
-    await handle.send(render(pipeline.followUpPrompt, vars));
+    const vars = { ...itemVars(repo, item), comments: fresh.map((c) => `${c.author}: ${c.body}`).join("\n\n") };
+    await handle.send(render(opts.followUpPrompt, vars) + langHint(item));
   } catch (error) {
     await patchRun(run.id, { status: "failed", error: error instanceof Error ? error.message : String(error) });
   }
@@ -313,6 +374,12 @@ export async function onTurnEnd(
   }
   const parsed = parseAgentJson(text);
   const repoConfig = findRepoConfig(state, run.repo);
+  if (run.external) {
+    // 外部 PR 跟进：只存分析草稿，不回写不合并
+    const summary = String(parsed?.summary ?? "") || text.slice(0, 2000);
+    await patchRun(run.id, { status: "done", summary: summary.trim() ? summary : "agent 无输出" });
+    return;
+  }
   try {
     if (run.kind === "pr") {
       const verdict = String(parsed?.verdict ?? "");
@@ -331,6 +398,7 @@ export async function onTurnEnd(
           try {
             await mergePullRequest(run.repo, run.number, repoConfig.prReview.mergeMethod, false, run.headSha);
             await patchRun(run.id, { status: "done", verdict, summary, merged: true });
+            await archiveWorkspace(paseo, run.workspaceId);
           } catch {
             // checks 未过等原因合并失败：head 没变则挂起留人工批准，变了则重审
             const now = await fetchHead(run.repo, run.number).catch(() => "");
@@ -342,7 +410,7 @@ export async function onTurnEnd(
         }
         return;
       }
-      const body = render(repoConfig?.prReview.commentTemplate ?? DEFAULT_PR_COMMENT_TEMPLATE, {
+      const body = render(await commentTemplateFor(run, repoConfig), {
         verdict,
         summary,
         comments: renderComments(parsed?.comments),
@@ -356,7 +424,7 @@ export async function onTurnEnd(
       await patchRun(run.id, { status: "failed", error: "agent 无输出" });
       return;
     }
-    const body = render(repoConfig?.issueHandle.commentTemplate ?? DEFAULT_ISSUE_COMMENT_TEMPLATE, { summary });
+    const body = render(await commentTemplateFor(run, repoConfig), { summary });
     await postComment(run.repo, "issue", run.number, body);
     await patchRun(run.id, { status: "done", summary, commentPosted: true });
   } catch (error) {
@@ -371,7 +439,7 @@ async function redispatchStale(paseo: PaseoApi, run: RunRecord, repoConfig: Repo
   await startRun(paseo, run.repo, "pr", item, repoConfig?.prReview.prompt ?? DEFAULT_PR_REVIEW_PROMPT, repoConfig?.prReview.agent ?? agentSettingsSchema.parse({}));
 }
 
-export async function doRunAction(paseo: PaseoApi, runId: string, action: "merge" | "skip" | "retry"): Promise<string> {
+export async function doRunAction(paseo: PaseoApi, runId: string, action: "merge" | "skip" | "retry" | "dismiss"): Promise<string> {
   const state = await readState();
   const run = state.runs.find((r) => r.id === runId);
   if (!run) throw new Error("run 不存在");
@@ -390,7 +458,14 @@ export async function doRunAction(paseo: PaseoApi, runId: string, action: "merge
     }
     await mergePullRequest(run.repo, run.number, repoConfig?.prReview.mergeMethod ?? "squash", false, run.headSha);
     await patchRun(run.id, { status: "done", merged: true });
+    await archiveWorkspace(paseo, run.workspaceId);
     return `已合并 ${run.repo}#${run.number}`;
+  }
+  if (action === "dismiss") {
+    if (run.status !== "failed") throw new Error("只有失败的 run 可以忽略");
+    await patchRun(run.id, { dismissed: true });
+    await archiveWorkspace(paseo, run.workspaceId);
+    return "已忽略，不再计入未处理";
   }
   if (action === "skip") {
     if (run.status !== "awaiting_merge") throw new Error("该 run 不在待确认状态");
@@ -403,6 +478,77 @@ export async function doRunAction(paseo: PaseoApi, runId: string, action: "merge
   const prompt = run.kind === "pr" ? (repoConfig?.prReview.prompt ?? DEFAULT_PR_REVIEW_PROMPT) : (repoConfig?.issueHandle.prompt ?? DEFAULT_ISSUE_PROMPT);
   await startRun(paseo, run.repo, run.kind, item, prompt, agentSettingsFor(state, run.repo, run.kind));
   return `已重试 ${run.repo}#${run.number}`;
+}
+
+/** 外部仓库「我提的 PR」：reviewer 新评论 → 派发/复用 agent 分析意见、起草回复。 */
+async function pollExternalPrs(paseo: PaseoApi, state: WorkbenchState): Promise<number> {
+  const auth = await authStatus();
+  if (!auth.ok) return 0;
+  const prs = (await searchBoardCached(auth.user, "pr", "open", "all"))
+    .filter((i) => i.repo.split("/")[0].toLowerCase() !== auth.user.toLowerCase());
+  let started = 0;
+  for (const pr of prs) {
+    const item: GhItem = {
+      number: pr.number,
+      title: pr.title,
+      body: "",
+      url: pr.url,
+      author: { login: pr.author },
+      labels: pr.labels.map((name) => ({ name })),
+    };
+    started += await followUp(paseo, pr.repo, "pr", item, state, {
+      authors: "",
+      agent: state.externalPr.agent,
+      followUpPrompt: state.externalPr.prompt,
+      firstPrompt: state.externalPr.prompt,
+      external: true,
+      excludeAuthor: auth.user,
+    });
+  }
+  return started;
+}
+
+/** 条目合并/关闭后：归档残留 worktree，待确认 run 自动收尾。 */
+async function reconcileClosed(paseo: PaseoApi, state: WorkbenchState): Promise<void> {
+  const auth = await authStatus();
+  if (!auth.ok) return;
+  // agent 已归档但 run 仍 running 的僵尸记录：自动收尾
+  for (const run of state.runs) {
+    if (run.status !== "running" || !run.agentId) continue;
+    const ref = paseo.agents.ref(run.agentId);
+    try {
+      await ref.refresh();
+    } catch {
+      continue;
+    }
+    if (ref.archivedAt) await patchRun(run.id, { status: "failed", error: "agent 已归档，run 自动收尾" });
+  }
+  const [prs, issues] = await Promise.all([
+    searchBoardCached(auth.user, "pr", "all"),
+    searchBoardCached(auth.user, "issue", "all"),
+  ]);
+  const closed = new Map([...prs, ...issues].filter((i) => i.state !== "open").map((i) => [`${i.repo}#${i.kind}#${i.number}`, i.state]));
+  const byItem = new Map<string, RunRecord[]>();
+  for (const run of state.runs) {
+    if (run.status === "running") continue;
+    const key = `${run.repo}#${run.kind}#${run.number}`;
+    if (!closed.has(key) || state.seen[`${key}:archived`]) continue;
+    const list = byItem.get(key) ?? [];
+    list.push(run);
+    byItem.set(key, list);
+  }
+  for (const [key, runs] of byItem) {
+    for (const ws of new Set(runs.map((r) => r.workspaceId).filter(Boolean))) {
+      await archiveWorkspace(paseo, ws);
+    }
+    for (const run of runs) {
+      if (run.status === "awaiting_merge") {
+        const merged = closed.get(key) === "merged";
+        await patchRun(run.id, { status: "done", merged, summary: `${run.summary}\n（条目已${merged ? "合并" : "关闭"}，自动归档）`.trim() });
+      }
+    }
+    await updateState((s) => { s.seen[`${key}:archived`] = "1"; });
+  }
 }
 
 const lastPoll = new Map<string, number>();
@@ -431,6 +577,22 @@ export async function tick(paseo: PaseoApi): Promise<string> {
           console.error(`[paseo-github-workbench] 轮询 ${repo} 失败:`, error);
         }
       }
+    }
+    if (state.externalPr.enabled) {
+      const last = lastPoll.get("external:prs") ?? 0;
+      if (Date.now() - last >= 5 * 60_000) {
+        lastPoll.set("external:prs", Date.now());
+        try {
+          started += await pollExternalPrs(paseo, state);
+        } catch (error) {
+          console.error("[paseo-github-workbench] 外部 PR 跟进失败:", error);
+        }
+      }
+    }
+    try {
+      await reconcileClosed(paseo, state);
+    } catch (error) {
+      console.error("[paseo-github-workbench] 关闭条目归档失败:", error);
     }
     return started > 0 ? `新派发 ${started} 个任务` : "没有新任务";
   } finally {

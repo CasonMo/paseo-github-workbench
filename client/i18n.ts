@@ -118,6 +118,9 @@ const zh = {
   "runs.autoMergeOk": "已开启自动合并 {target}（等 checks 通过后合）",
   "runs.skipped": "已跳过合并",
   "runs.retried": "已重试 {target}",
+  "runs.dismiss": "忽略",
+  "runs.dismissed": "已忽略",
+  "runs.dismissOk": "已忽略，不再计入未处理",
 
   "detail.back": "返回看板",
   "detail.readError": "详情读取失败",
@@ -161,6 +164,9 @@ const zh = {
   "auto.agentPickModelFirst": "先选择 Agent / 模型",
   "auto.agentAdvanced": "高级配置（JSON，可选）",
   "auto.agentAdvancedHint": "JSON 对象，合并进 agent 配置，可设 options / systemPrompt / toolPolicy / mcpServers",
+  "external.title": "我提的 PR（外部仓库）跟进",
+  "external.intro": "你在别人仓库提的 PR 收到新评论时，自动派发 agent 分析意见并起草回复（不自动发评论、不 push），后续评论复用原 agent。",
+  "external.promptLabel": "分析提示词模板",
 } as const;
 
 export type DictKey = keyof typeof zh;
@@ -245,6 +251,9 @@ const en: Record<DictKey, string> = {
   "runs.autoMergeOk": "Auto-merge enabled for {target} (merges when checks pass)",
   "runs.skipped": "Merge skipped",
   "runs.retried": "Retried {target}",
+  "runs.dismiss": "Dismiss",
+  "runs.dismissed": "Dismissed",
+  "runs.dismissOk": "Dismissed; no longer counted as pending",
 
   "detail.back": "Back to board",
   "detail.readError": "Failed to load details",
@@ -288,6 +297,9 @@ const en: Record<DictKey, string> = {
   "auto.agentPickModelFirst": "Pick an agent / model first",
   "auto.agentAdvanced": "Advanced config (JSON, optional)",
   "auto.agentAdvancedHint": "JSON object merged into the agent config; supports options / systemPrompt / toolPolicy / mcpServers",
+  "external.title": "Follow up my PRs in external repos",
+  "external.intro": "When PRs you filed in other people's repos receive new comments, an agent analyzes the feedback and drafts a reply (no auto-commenting, no push); later comments reuse the original agent.",
+  "external.promptLabel": "Analysis prompt template",
 };
 
 const DICT: Record<Locale, Record<DictKey, string>> = { zh, en };

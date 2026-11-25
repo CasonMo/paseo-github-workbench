@@ -61,12 +61,13 @@ export function WorkbenchScreen({ theme, layout, navigation }: PluginScreenProps
 
   const act = useRpc(runAction);
   const actionMutation = useMutation({
-    mutationFn: (input: { runId: string; action: "merge" | "skip" | "retry" }) => act(input),
+    mutationFn: (input: { runId: string; action: "merge" | "skip" | "retry" | "dismiss" }) => act(input),
     onSuccess: (result, input) => {
       const run = (query.data?.state.runs ?? []).find((r) => r.id === input.runId);
       const target = run ? `${run.repo}#${run.number}` : "";
       if (input.action === "merge") toast.show(t("runs.mergeOk", { target }));
       else if (input.action === "skip") toast.show(t("runs.skipped"));
+      else if (input.action === "dismiss") toast.show(t("runs.dismissOk"));
       else toast.show(t("runs.retried", { target }));
       void queryClient.invalidateQueries({ queryKey: STATE_KEY });
     },
@@ -139,6 +140,7 @@ export function WorkbenchScreen({ theme, layout, navigation }: PluginScreenProps
                       <Tag ui={ui} label={meta.label} tone={meta.tone} icon={meta.icon} />
                       {run.merged ? <Tag ui={ui} label={t("runs.merged")} tone="success" icon="GitMerge" /> : null}
                       {run.commentPosted ? <Tag ui={ui} label={t("runs.commented")} tone="muted" icon="MessageSquare" /> : null}
+                      {run.dismissed ? <Tag ui={ui} label={t("runs.dismissed")} tone="muted" icon="EyeOff" /> : null}
                       <View style={ui.s.grow} />
                       <Icon name={open ? "ChevronDown" : "ChevronRight"} size={15} color={ui.c.faint} />
                     </View>
@@ -160,6 +162,7 @@ export function WorkbenchScreen({ theme, layout, navigation }: PluginScreenProps
                       </>
                     ) : null}
                     {run.status === "failed" ? <Btn ui={ui} label={t("common.retry")} icon="RefreshCw" busy={actionMutation.isPending} onPress={() => actionMutation.mutate({ runId: run.id, action: "retry" })} /> : null}
+                    {run.status === "failed" && !run.dismissed ? <Btn ui={ui} label={t("runs.dismiss")} icon="EyeOff" onPress={() => actionMutation.mutate({ runId: run.id, action: "dismiss" })} /> : null}
                     {run.agentId && navigation?.openAgent ? <Btn ui={ui} label={t("common.openAgent")} icon="Bot" onPress={() => navigation.openAgent({ agentId: run.agentId })} /> : null}
                     <IconBtn ui={ui} icon="ExternalLink" label={t("common.openGitHub")} onPress={() => void openExternalUrl(run.url)} />
                   </View>

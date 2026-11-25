@@ -36,6 +36,26 @@ export const DEFAULT_ISSUE_COMMENT_TEMPLATE = `🤖 自动处理结果（paseo-g
 
 {{summary}}`;
 
+export const DEFAULT_PR_COMMENT_TEMPLATE_EN = `🤖 Automated review (paseo-github-workbench)
+
+Verdict: {{verdict}}
+
+{{summary}}
+
+{{comments}}`;
+
+export const DEFAULT_ISSUE_COMMENT_TEMPLATE_EN = `🤖 Automated result (paseo-github-workbench)
+
+{{summary}}`;
+
+export const DEFAULT_EXTERNAL_PR_PROMPT = `你是 PR 维护助手。用户在 {{repo}} 提的 PR #{{number}}（{{title}}）收到新评论：
+{{comments}}
+
+请分析这些意见：是否要求修改、问题是否成立、应如何回应。需要改代码时在当前 worktree 做最小修改并 git commit（不要 push，除非评论明确要求）。
+不要直接在 GitHub 发表评论，回复由用户人工采纳。
+完成后最后一条消息只输出一个 JSON 对象（不要其它文字）：
+{"summary":"意见分析 + 建议回复草稿（分析用中文，回复草稿用评论原文语言）","needChanges":true 或 false}`;
+
 export const DEFAULT_PR_FOLLOWUP_PROMPT = `你是代码评审 agent，之前已评审过 {{repo}} 的 PR #{{number}}（{{title}}）。该 PR 有新评论：
 {{comments}}
 
@@ -114,6 +134,9 @@ export const runSchema = z.object({
   agentId: z.string().default(""),
   commentPosted: z.boolean().default(false),
   merged: z.boolean().default(false),
+  dismissed: z.boolean().default(false),
+  /** 外部仓库「我提的 PR」跟进 run：只存分析草稿，不回写不合并 */
+  external: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -126,6 +149,13 @@ export const uiPrefsSchema = z.object({
   boardState: z.enum(["open", "closed", "all"]).default("all"),
   boardRepo: z.string().default(""),
   language: z.enum(["auto", "zh", "en"]).default("auto"),
+});
+
+/** 外部仓库「我提的 PR」跟进：reviewer 回复时派发 agent 分析意见、起草回复 */
+export const externalPrSchema = z.object({
+  enabled: z.boolean().default(false),
+  prompt: z.string().default(DEFAULT_EXTERNAL_PR_PROMPT),
+  agent: agentSettingsSchema.default(() => agentSettingsSchema.parse({})),
 });
 
 export const stateSchema = z.object({
@@ -147,6 +177,7 @@ export const stateSchema = z.object({
   allReposSeeded: z.boolean().default(false),
   /** 看板筛选偏好（记住用户上次的选择） */
   ui: uiPrefsSchema.default(() => uiPrefsSchema.parse({})),
+  externalPr: externalPrSchema.default(() => externalPrSchema.parse({})),
 });
 
 export type RepoConfig = z.output<typeof repoSchema>;
@@ -181,7 +212,7 @@ export const runAction = defineRpc({
   name: "github-workbench.run.action",
   input: z.object({
     runId: z.string(),
-    action: z.enum(["merge", "skip", "retry"]),
+    action: z.enum(["merge", "skip", "retry", "dismiss"]),
   }),
   output: z.object({ state: stateSchema, message: z.string() }),
 });
@@ -317,4 +348,10 @@ export const uiPrefsSave = defineRpc({
   name: "github-workbench.ui.save",
   input: uiPrefsSchema.partial(),
   output: z.object({ ok: z.boolean() }),
+});
+
+export const externalPrSave = defineRpc({
+  name: "github-workbench.external.save",
+  input: externalPrSchema,
+  output: z.object({ state: stateSchema }),
 });

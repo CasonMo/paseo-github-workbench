@@ -1,5 +1,5 @@
 import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
-import { ALL_REPOS, attentionBadge, boardList, dispatchItem, ghCollaboratorsList, ghLabelsList, ghReposList, itemComment, itemDetail, itemMerge, pollNow, providerCatalog, repoRemove, repoSave, repoSchema, runAction, stateGet, uiPrefsSave } from "./shared/contracts";
+import { ALL_REPOS, attentionBadge, boardList, dispatchItem, externalPrSave, ghCollaboratorsList, ghLabelsList, ghReposList, itemComment, itemDetail, itemMerge, pollNow, providerCatalog, repoRemove, repoSave, repoSchema, runAction, stateGet, uiPrefsSave } from "./shared/contracts";
 import { authStatus, fetchDetail, listCollaborators, listLabels, listRepos, mergePullRequest, postComment, searchBoardCached } from "./server/github";
 import { dispatchItem as dispatch, doRunAction, onTurnEnd, tick } from "./server/engine";
 import { readState, updateState } from "./server/store";
@@ -86,12 +86,12 @@ export default function contribute(server: PluginServerContext) {
       if (!auth.ok) return { count: 0 };
       const state = await readState();
       const [prs, issues] = await Promise.all([
-        searchBoardCached(auth.user, "pr", "open"),
-        searchBoardCached(auth.user, "issue", "open"),
+        searchBoardCached(auth.user, "pr", "open", "owned"),
+        searchBoardCached(auth.user, "issue", "open", "owned"),
       ]);
       const hasRun = new Set(state.runs.map((r) => `${r.repo}#${r.number}:${r.kind}`));
       const undispatched = [...prs, ...issues].filter((i) => !hasRun.has(`${i.repo}#${i.number}:${i.kind}`)).length;
-      const pendingRuns = state.runs.filter((r) => r.status === "awaiting_merge" || r.status === "failed").length;
+      const pendingRuns = state.runs.filter((r) => (r.status === "awaiting_merge" || r.status === "failed") && !r.dismissed).length;
       return { count: undispatched + pendingRuns };
     } catch {
       return { count: 0 };
@@ -126,6 +126,12 @@ export default function contribute(server: PluginServerContext) {
     });
     return { ok: true };
   });
+
+  server.handle(externalPrSave, async (input) => ({
+    state: await updateState((state) => {
+      state.externalPr = input;
+    }),
+  }));
 
   server.handle(providerCatalog, async (_input, { paseo }) => {
     const snapshot = await paseo.providers.snapshot();

@@ -45,7 +45,8 @@ Paseo plugin requirements we must follow when developing and reviewing this plug
   arrays, never a concatenated shell string.
 - PR/issue bodies and comments are untrusted input. They flow into agent prompts inside
   clear data boundaries; the review agent is not granted merge authority. Merge and comment
-  write-back are executed by plugin code, not left to agent discretion.
+  write-back are executed by plugin code, not left to agent discretion. External-PR follow-up
+  agents only draft replies in run history; they never auto-comment or push.
 - Merge defaults to manual confirmation; full-auto merge is an explicit opt-in.
 - Merges are pinned to the reviewed head commit (REST `sha` parameter); a moved PR head
   blocks the merge and triggers a fresh review dispatch. Automatic merge never enables

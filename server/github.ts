@@ -186,8 +186,8 @@ interface SearchRow {
   labels?: { name: string }[];
 }
 
-/** 跨仓库看板：名下仓库 + 本人作为作者的 PR / issue（含外部仓库），两路搜索去重合并。 */
-export async function searchBoard(user: string, kind: "pr" | "issue", state: "open" | "closed" | "all" = "open"): Promise<BoardItem[]> {
+/** 跨仓库搜索：owned = 名下仓库；all = 名下 + 本人作为作者（含外部仓库），去重合并。 */
+export async function searchBoard(user: string, kind: "pr" | "issue", state: "open" | "closed" | "all" = "open", scope: "owned" | "all" = "all"): Promise<BoardItem[]> {
   // isDraft 仅 PR 搜索支持；issue 搜索带上会报 Unknown JSON field
   const fields = kind === "pr"
     ? "number,title,url,author,updatedAt,state,repository,isDraft,labels"
@@ -198,12 +198,11 @@ export async function searchBoard(user: string, kind: "pr" | "issue", state: "op
     "--json", fields,
     ...(state === "all" ? [] : ["--state", state]),
   ];
-  const [owned, authored] = await Promise.all([
-    ghJson<SearchRow[]>([...base, "--owner", user]),
-    ghJson<SearchRow[]>([...base, "--author", user]),
-  ]);
+  const searches = [ghJson<SearchRow[]>([...base, "--owner", user])];
+  if (scope === "all") searches.push(ghJson<SearchRow[]>([...base, "--author", user]));
+  const results = await Promise.all(searches);
   const seen = new Set<string>();
-  const rows = [...owned, ...authored].filter((r) => {
+  const rows = results.flat().filter((r) => {
     const key = `${r.repository.nameWithOwner}#${r.number}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -227,11 +226,11 @@ const boardCache = new Map<string, { at: number; items: BoardItem[] }>();
 const BOARD_CACHE_TTL_MS = 60_000;
 
 /** 看板与侧边栏徽章共用的搜索缓存，避免 gh 调用翻倍。 */
-export async function searchBoardCached(user: string, kind: "pr" | "issue", state: "open" | "closed" | "all" = "open"): Promise<BoardItem[]> {
-  const key = `${kind}:${state}`;
+export async function searchBoardCached(user: string, kind: "pr" | "issue", state: "open" | "closed" | "all" = "open", scope: "owned" | "all" = "all"): Promise<BoardItem[]> {
+  const key = `${kind}:${state}:${scope}`;
   const hit = boardCache.get(key);
   if (hit && Date.now() - hit.at < BOARD_CACHE_TTL_MS) return hit.items;
-  const items = await searchBoard(user, kind, state);
+  const items = await searchBoard(user, kind, state, scope);
   boardCache.set(key, { at: Date.now(), items });
   return items;
 }

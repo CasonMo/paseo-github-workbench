@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 process.env.XDG_STATE_HOME = mkdtempSync(join(tmpdir(), "gwb-test-"));
 
-import { parseAgentJson, pollRepo } from "../server/engine";
+import { parseAgentJson, pollRepo, detectLang } from "../server/engine";
 import { listPullRequests, authStatus, searchBoard } from "../server/github";
 import { readState, updateState } from "../server/store";
 import { repoSchema } from "../shared/contracts";
@@ -22,6 +22,18 @@ async function main() {
     if (got !== expect) throw new Error(`parseAgentJson 失败: ${text}`);
   }
   console.log("✓ parseAgentJson");
+
+  // 1.5 语言检测
+  const langCases: [string, "zh" | "en"][] = [
+    ["修复成本估算的缓存读取费率", "zh"],
+    ["Fix cache read rates in cost estimation", "en"],
+    ["feat: 新增 archive 保留策略", "zh"],
+    ["", "en"],
+  ];
+  for (const [text, expect] of langCases) {
+    if (detectLang(text) !== expect) throw new Error(`detectLang 失败: ${text}`);
+  }
+  console.log("✓ detectLang");
 
   // 2. 状态读写 roundtrip
   const testRepo = repoSchema.parse({ repo: "getpaseo/paseo", prReview: { enabled: true } });
