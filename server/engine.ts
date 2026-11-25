@@ -306,13 +306,20 @@ export async function onTurnEnd(
       const summary = String(parsed?.summary ?? "");
       if (verdict === "approve") {
         if (repoConfig?.prReview.autoMerge) {
-          const head = await fetchHead(run.repo, run.number);
-          if (run.headSha && head !== run.headSha) {
+          const head = run.headSha ? await fetchHead(run.repo, run.number) : "";
+          if (!run.headSha || head !== run.headSha) {
             await redispatchStale(paseo, run, repoConfig);
             return;
           }
-          await mergePullRequest(run.repo, run.number, repoConfig.prReview.mergeMethod, true, run.headSha);
-          await patchRun(run.id, { status: "done", verdict, summary, merged: true });
+          try {
+            await mergePullRequest(run.repo, run.number, repoConfig.prReview.mergeMethod, false, run.headSha);
+            await patchRun(run.id, { status: "done", verdict, summary, merged: true });
+          } catch {
+            // checks 未过等原因合并失败：head 没变则挂起留人工批准，变了则重审
+            const now = await fetchHead(run.repo, run.number).catch(() => "");
+            if (now && now !== run.headSha) await redispatchStale(paseo, run, repoConfig);
+            else await patchRun(run.id, { status: "awaiting_merge", verdict, summary });
+          }
         } else {
           await patchRun(run.id, { status: "awaiting_merge", verdict, summary });
         }
@@ -355,8 +362,12 @@ export async function doRunAction(paseo: PaseoApi, runId: string, action: "merge
     if (run.kind !== "pr" || run.merged) throw new Error("该 run 不可合并");
     if (run.verdict !== "approve") throw new Error("评审结论不是 approve，不能合并");
     const repoConfig = findRepoConfig(state, run.repo);
+    if (!run.headSha) {
+      await redispatchStale(paseo, run, repoConfig);
+      return `旧 run 缺少评审 commit，已重新派发评审 ${run.repo}#${run.number}`;
+    }
     const head = await fetchHead(run.repo, run.number);
-    if (run.headSha && head !== run.headSha) {
+    if (head !== run.headSha) {
       await redispatchStale(paseo, run, repoConfig);
       return `PR 有新提交，合并已阻止，已重新派发评审 ${run.repo}#${run.number}`;
     }
