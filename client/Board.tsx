@@ -9,7 +9,7 @@ import { ItemDetail, type DetailTarget } from "./ItemDetail";
 import { DispatchPanel } from "./DispatchPanel";
 import { useI18n } from "./i18n";
 import { revealOnFocus } from "./use-keyboard-inset";
-import { Avatar, Btn, Card, Chips, Empty, ErrorNote, IconBtn, LoadingRow, Select, Tag, relTime, type Tone, type Ui } from "./ui";
+import { Avatar, Card, Chips, Empty, ErrorNote, IconBtn, LoadingRow, Select, Tag, relTime, type Tone, type Ui } from "./ui";
 
 const STATE_KEY = ["paseo-github-workbench", "state"];
 
@@ -137,10 +137,18 @@ export function Board({ ui, runs, repoConfigs, navigation, prefs }: { ui: Ui; ru
                     {item.isDraft ? <Tag ui={ui} label="draft" tone="muted" /> : null}
                     {latestRun ? <Tag ui={ui} label={t(RUN_STATUS_KEY[latestRun.status])} tone={RUN_STATUS_TONE[latestRun.status]} /> : null}
                   </View>
-                  <View style={[ui.s.row, ui.s.gap6]}>
-                    <Btn ui={ui} label={latestRun?.status === "running" ? t("common.redispatch") : t("common.dispatch")} icon="Bot" tone="primary" busy={pending} onPress={() => setDispatchFor(dispatchFor === key ? null : key)} style={{ paddingHorizontal: 10, paddingVertical: 5 }} />
-                    {latestRun?.agentId && navigation?.openAgent ? <IconBtn ui={ui} icon="Bot" label={t("common.openAgent")} onPress={() => navigation.openAgent({ agentId: latestRun.agentId })} /> : null}
-                    <IconBtn ui={ui} icon="ExternalLink" label={t("common.openGitHub")} onPress={() => void openExternalUrl(item.url)} />
+                  <View style={[ui.s.row, ui.s.gap8]}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={latestRun?.status === "running" ? t("common.redispatch") : t("common.dispatch")} disabled={pending} onPress={() => setDispatchFor(dispatchFor === key ? null : key)} style={({ pressed }) => [pressed && ui.s.pressed]}>
+                      <Text style={{ color: ui.c.brand, fontSize: 12, fontWeight: "600" }}>{pending ? t("common.dispatching") : latestRun?.status === "running" ? t("common.redispatch") : t("common.dispatch")}</Text>
+                    </Pressable>
+                    {latestRun?.agentId && navigation?.openAgent ? (
+                      <Pressable accessibilityRole="button" accessibilityLabel={t("common.openAgent")} onPress={() => navigation.openAgent({ agentId: latestRun.agentId })} style={({ pressed }) => [pressed && ui.s.pressed]}>
+                        <Text style={{ color: ui.c.brand, fontSize: 12, fontWeight: "600" }}>{t("common.openAgent")}</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable accessibilityRole="button" accessibilityLabel={t("common.openGitHub")} onPress={() => void openExternalUrl(item.url)} style={({ pressed }) => [pressed && ui.s.pressed]}>
+                      <Text style={{ color: ui.c.brand, fontSize: 12, fontWeight: "600" }}>GitHub</Text>
+                    </Pressable>
                   </View>
                 </View>
               </View>
