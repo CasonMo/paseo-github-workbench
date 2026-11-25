@@ -47,6 +47,8 @@ Paseo plugin requirements we must follow when developing and reviewing this plug
   clear data boundaries; the review agent is not granted merge authority. Merge and comment
   write-back are executed by plugin code, not left to agent discretion.
 - Merge defaults to manual confirmation; full-auto merge is an explicit opt-in.
+- Merges are pinned to the reviewed head commit (REST `sha` parameter); a moved PR head
+  blocks the merge and triggers a fresh review dispatch.
 - Document every network destination and data flow in `OVERVIEW.md`.
 
 ## Data sanitization

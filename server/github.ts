@@ -55,8 +55,22 @@ export function postComment(repo: string, kind: "pr" | "issue", number: number, 
   return gh([kind, "comment", String(number), "--repo", repo, "--body", body]);
 }
 
-export function mergePullRequest(repo: string, number: number, method: "merge" | "squash" | "rebase", auto = false): Promise<string> {
-  return gh(["pr", "merge", String(number), "--repo", repo, `--${method}`, ...(auto ? ["--auto"] : [])]);
+export function fetchHead(repo: string, number: number): Promise<string> {
+  return ghJson<{ headRefOid: string }>(["pr", "view", String(number), "--repo", repo, "--json", "headRefOid"]).then((r) => r.headRefOid);
+}
+
+/** 合并锁定评审时的 head commit：REST merge 带 sha 参数，head 变化时 GitHub 直接拒绝。 */
+export async function mergePullRequest(repo: string, number: number, method: "merge" | "squash" | "rebase", auto = false, expectedSha = ""): Promise<string> {
+  if (auto) {
+    if (expectedSha) {
+      const head = await fetchHead(repo, number);
+      if (head !== expectedSha) throw new Error("PR head 已变化，需重新评审后才能开启自动合并");
+    }
+    return gh(["pr", "merge", String(number), "--repo", repo, `--${method}`, "--auto"]);
+  }
+  const args = ["api", "-X", "PUT", `repos/${repo}/pulls/${number}/merge`, "-f", `merge_method=${method}`];
+  if (expectedSha) args.push("-f", `sha=${expectedSha}`);
+  return gh(args);
 }
 
 export interface ItemDetail {

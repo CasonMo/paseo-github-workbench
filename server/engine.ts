@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { ALL_REPOS, DEFAULT_ISSUE_COMMENT_TEMPLATE, DEFAULT_ISSUE_PROMPT, DEFAULT_PR_COMMENT_TEMPLATE, DEFAULT_PR_REVIEW_PROMPT, agentSettingsSchema, type AgentSettings, type RepoConfig, type RunRecord, type WorkbenchState } from "../shared/contracts";
 import type { GhItem } from "./github";
-import { cloneRepo, fetchComments, fetchItem, fetchOrigin, listIssues, listPullRequests, listRepos, mergePullRequest, postComment } from "./github";
+import { cloneRepo, fetchComments, fetchHead, fetchItem, fetchOrigin, listIssues, listPullRequests, listRepos, mergePullRequest, postComment } from "./github";
 import { readState, updateState } from "./store";
 
 type PaseoApi = PluginHandlerContext["paseo"];
@@ -306,7 +306,12 @@ export async function onTurnEnd(
       const summary = String(parsed?.summary ?? "");
       if (verdict === "approve") {
         if (repoConfig?.prReview.autoMerge) {
-          await mergePullRequest(run.repo, run.number, repoConfig.prReview.mergeMethod);
+          const head = await fetchHead(run.repo, run.number);
+          if (run.headSha && head !== run.headSha) {
+            await redispatchStale(paseo, run, repoConfig);
+            return;
+          }
+          await mergePullRequest(run.repo, run.number, repoConfig.prReview.mergeMethod, true, run.headSha);
           await patchRun(run.id, { status: "done", verdict, summary, merged: true });
         } else {
           await patchRun(run.id, { status: "awaiting_merge", verdict, summary });
@@ -335,6 +340,13 @@ export async function onTurnEnd(
   }
 }
 
+/** head 变化阻止合并后：旧 run 标记失败并自动派发新评审。 */
+async function redispatchStale(paseo: PaseoApi, run: RunRecord, repoConfig: RepoConfig | undefined): Promise<void> {
+  await patchRun(run.id, { status: "failed", error: "PR head 已变化，合并已阻止，已重新派发评审" });
+  const item = await fetchItem(run.repo, "pr", run.number);
+  await startRun(paseo, run.repo, "pr", item, repoConfig?.prReview.prompt ?? DEFAULT_PR_REVIEW_PROMPT, repoConfig?.prReview.agent ?? agentSettingsSchema.parse({}));
+}
+
 export async function doRunAction(paseo: PaseoApi, runId: string, action: "merge" | "skip" | "retry"): Promise<string> {
   const state = await readState();
   const run = state.runs.find((r) => r.id === runId);
@@ -343,7 +355,12 @@ export async function doRunAction(paseo: PaseoApi, runId: string, action: "merge
     if (run.kind !== "pr" || run.merged) throw new Error("该 run 不可合并");
     if (run.verdict !== "approve") throw new Error("评审结论不是 approve，不能合并");
     const repoConfig = findRepoConfig(state, run.repo);
-    await mergePullRequest(run.repo, run.number, repoConfig?.prReview.mergeMethod ?? "squash");
+    const head = await fetchHead(run.repo, run.number);
+    if (run.headSha && head !== run.headSha) {
+      await redispatchStale(paseo, run, repoConfig);
+      return `PR 有新提交，合并已阻止，已重新派发评审 ${run.repo}#${run.number}`;
+    }
+    await mergePullRequest(run.repo, run.number, repoConfig?.prReview.mergeMethod ?? "squash", false, run.headSha);
     await patchRun(run.id, { status: "done", merged: true });
     return `已合并 ${run.repo}#${run.number}`;
   }
