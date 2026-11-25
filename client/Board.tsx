@@ -138,16 +138,18 @@ export function Board({ ui, runs, repoConfigs, navigation, prefs }: { ui: Ui; ru
                     {latestRun ? <Tag ui={ui} label={t(RUN_STATUS_KEY[latestRun.status])} tone={RUN_STATUS_TONE[latestRun.status]} /> : null}
                   </View>
                   <View style={[ui.s.row, ui.s.gap8]}>
-                    <Pressable accessibilityRole="button" accessibilityLabel={latestRun?.status === "running" ? t("common.redispatch") : t("common.dispatch")} disabled={pending} onPress={() => setDispatchFor(dispatchFor === key ? null : key)} style={({ pressed }) => [pressed && ui.s.pressed]}>
-                      <Text style={{ color: ui.c.brand, fontSize: 12, fontWeight: "600" }}>{pending ? t("common.dispatching") : latestRun?.status === "running" ? t("common.redispatch") : t("common.dispatch")}</Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel={latestRun?.status === "running" ? t("common.redispatch") : t("common.dispatch")} disabled={pending} onPress={() => setDispatchFor(dispatchFor === key ? null : key)} style={({ pressed }) => [ui.s.row, ui.s.gap4, pressed && ui.s.pressed]}>
+                      <Icon name="Bot" size={13} color={ui.c.brand} />
+                      <Text style={{ color: ui.c.brand, fontSize: 12, fontWeight: "600" }}>{pending ? t("common.dispatching") : latestRun?.status === "running" ? t("board.redispatchShort") : t("board.dispatchShort")}</Text>
                     </Pressable>
                     {latestRun?.agentId && navigation?.openAgent ? (
-                      <Pressable accessibilityRole="button" accessibilityLabel={t("common.openAgent")} onPress={() => navigation.openAgent({ agentId: latestRun.agentId })} style={({ pressed }) => [pressed && ui.s.pressed]}>
+                      <Pressable accessibilityRole="button" accessibilityLabel={t("common.openAgent")} onPress={() => navigation.openAgent({ agentId: latestRun.agentId })} style={({ pressed }) => [ui.s.row, ui.s.gap4, pressed && ui.s.pressed]}>
+                        <Icon name="MessageSquare" size={13} color={ui.c.brand} />
                         <Text style={{ color: ui.c.brand, fontSize: 12, fontWeight: "600" }}>{t("common.openAgent")}</Text>
                       </Pressable>
                     ) : null}
                     <Pressable accessibilityRole="button" accessibilityLabel={t("common.openGitHub")} onPress={() => void openExternalUrl(item.url)} style={({ pressed }) => [pressed && ui.s.pressed]}>
-                      <Text style={{ color: ui.c.brand, fontSize: 12, fontWeight: "600" }}>GitHub</Text>
+                      <Icon name="ExternalLink" size={13} color={ui.c.brand} />
                     </Pressable>
                   </View>
                 </View>

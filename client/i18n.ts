@@ -95,6 +95,8 @@ const zh = {
   "board.emptyDesc": "调整筛选条件，或点击刷新。",
   "board.pr": "PR",
   "board.issue": "Issue",
+  "board.dispatchShort": "派发",
+  "board.redispatchShort": "重新派发",
 
   "runs.emptyTitle": "暂无运行记录",
   "runs.emptyDesc": "到看板派发一个 PR / issue，或在自动化页启用监听。",
@@ -220,6 +222,8 @@ const en: Record<DictKey, string> = {
   "board.emptyDesc": "Adjust filters, or refresh.",
   "board.pr": "PR",
   "board.issue": "Issue",
+  "board.dispatchShort": "Dispatch",
+  "board.redispatchShort": "Redispatch",
 
   "runs.emptyTitle": "No runs yet",
   "runs.emptyDesc": "Dispatch a PR / issue from the board, or enable a watch in Automation.",
